@@ -98,8 +98,8 @@ module.exports = {
     },
     status: {
       type: 4, // [custom status]
-      name: 'craig',
-      state: 'Recording VCs • craig.chat'
+      name: 'chronicler',
+      state: 'Recording your sessions'
     },
     logger: {
       level: 'debug'

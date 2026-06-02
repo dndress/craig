@@ -104,7 +104,7 @@ export default class ServerSettings extends GeneralCommand {
                 type: ComponentType.BUTTON,
                 style: ButtonStyle.LINK,
                 label: 'Join Support Server',
-                url: 'https://discord.gg/craig'
+                url: 'https://chronicler.andres-invents.cloud'
               }
             ]
           }

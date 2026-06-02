@@ -188,8 +188,7 @@ export default class Recording {
         e
       );
       this.state = RecordingState.ERROR;
-      this.stateDescription =
-        'Failed to connect to your channel, try again later. If the issue persists, report it in the [support server](<https://discord.gg/craig>).';
+      this.stateDescription = 'Failed to connect to your channel, try again later.';
       await this.stop(true);
       await this.pushToActivity('Failed to connect!');
 
@@ -565,7 +564,7 @@ export default class Recording {
       this.channel.leave();
       await this.retryConnect();
     } else if (this.state !== RecordingState.RECONNECTING) {
-      this.pushToActivity(`The voice connection was closed, disconnecting... ([why?](https://link.snaz.in/craigstopped))`, false);
+      this.pushToActivity(`The voice connection was closed, disconnecting...`, false);
       try {
         await this.stop();
       } catch (e) {

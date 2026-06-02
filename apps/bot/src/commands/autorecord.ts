@@ -99,7 +99,7 @@ export default class AutoRecord extends GeneralCommand {
                 type: ComponentType.BUTTON,
                 style: ButtonStyle.LINK,
                 label: 'Join Support Server',
-                url: 'https://discord.gg/craig'
+                url: 'https://chronicler.andres-invents.cloud'
               }
             ]
           }
@@ -136,7 +136,7 @@ export default class AutoRecord extends GeneralCommand {
                 type: ComponentType.BUTTON,
                 style: ButtonStyle.LINK,
                 label: 'How do I fix this?',
-                url: 'https://craig.chat/docs/#setting-up-access-roles'
+                url: 'https://chronicler.andres-invents.cloud'
               }
             ]
           }

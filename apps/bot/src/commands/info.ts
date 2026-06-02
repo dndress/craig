@@ -1,5 +1,5 @@
 import { stripIndents } from 'common-tags';
-import { ButtonStyle, CommandContext, ComponentType, SlashCreator } from 'slash-create';
+import { CommandContext, SlashCreator } from 'slash-create';
 
 import { processCooldown } from '../redis';
 import GeneralCommand from '../slashCommand';
@@ -38,42 +38,14 @@ export default class Info extends GeneralCommand {
 
     return {
       content: stripIndents`
-        ${this.emojis.getMarkdown('craig')} **Craig** is a multi-track voice channel recorder.
-        I am in **${guildCount.toLocaleString()}** guilds and currently recording **${recordings.toLocaleString()}** conversations.
+        ${this.emojis.getMarkdown('craig')} **Chronicler** is a multi-track voice channel recorder for tabletop roleplaying sessions.
+        I am currently recording **${recordings.toLocaleString()}** conversations across **${guildCount.toLocaleString()}** guilds.
 
         This server is on shard ${this.client.shard?.id ?? process.env.SHARD_ID} with ${
         this.client.shard?.latency ?? '<unknown>'
       } milliseconds of latency.
       `,
-      ephemeral: true,
-      components: [
-        {
-          type: ComponentType.ACTION_ROW,
-          components: [
-            {
-              type: ComponentType.BUTTON,
-              style: ButtonStyle.LINK,
-              label: 'craig.chat',
-              url: this.client.config.craig.homepage
-            },
-            {
-              type: ComponentType.BUTTON,
-              style: ButtonStyle.LINK,
-              label: 'Invite',
-              url: `https://discord.com/oauth2/authorize?client_id=${
-                this.client.config.craig.inviteID ?? this.client.config.applicationID
-              }&permissions=0&scope=bot%20applications.commands`,
-              emoji: this.emojis.getPartial('craig')
-            },
-            {
-              type: ComponentType.BUTTON,
-              style: ButtonStyle.LINK,
-              label: 'Support Server',
-              url: 'https://discord.gg/craig'
-            }
-          ]
-        }
-      ]
+      ephemeral: true
     };
   }
 }

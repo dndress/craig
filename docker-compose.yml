@@ -6,8 +6,6 @@ services:
       POSTGRES_PASSWORD: craig
       POSTGRES_DB: craig
       POSTGRES_USER: craig
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U craig"]
       interval: 5s
@@ -18,13 +16,8 @@ services:
   redis:
     image: redis
     restart: always
-    ports:
-      - "6379:6379"
   craig:
     build: .
-    ports:
-      - "3000:3000"
-      - "5029:5029"
     depends_on:
       db:
         condition: service_healthy
@@ -34,7 +27,6 @@ services:
     volumes:
       - 'craig_rec:/app/rec'
       - './install.config:/app/install.config:ro'
-
 volumes:
   db_data:
   craig_rec:

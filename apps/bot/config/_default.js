@@ -1,14 +1,11 @@
 const Eris = require('eris');
-
 module.exports = {
   // Redis, leave blank to connect to localhost:6379 with "craig:" as the prefix
-  redis: {},
-  // redis: {
-  //   host: 'localhost',
-  //   port: 6379,
-  //   keyPrefix: 'craig:'
-  // },
-
+  redis: {
+    host: 'redis',
+    port: 6379,
+    keyPrefix: 'craig:'
+  },
   sharding: {
     file: './index.js',
     // The amount of shards to spawn in sharding mode
@@ -16,7 +13,6 @@ module.exports = {
     // The amount of time to wait for a ready
     readyTimeout: 60000
   },
-
   // InfluxDB options
   influx: false,
   // influx: {
@@ -27,7 +23,6 @@ module.exports = {
   //   server: 'dev',
   //   bot: 'craig'
   // },
-
   // Sentry options
   sentry: false,
   // sentry: {
@@ -35,13 +30,11 @@ module.exports = {
   //   env: 'development',
   //   sampleRate: 1.0
   // },
-
   dexare: {
     // Bot token
     token: '',
     // Application ID
     applicationID: '',
-
     /** @type {Eris.ClientOptions} */
     erisOptions: {
       autoreconnect: true,
@@ -59,24 +52,21 @@ module.exports = {
         requestTimeout: 15000
       }
     },
-
     // Users who can eval
     elevated: ['158049329150427136'],
-
     prefix: ['craig', ':craig:', 'craig,', ':craig:,'],
     mentionPrefix: true,
-
     craig: {
       // The craig emoji ID
       emoji: '297187944295301122',
       // The protocol to get downloads from
       downloadProtocol: 'https',
       // The domain to get downloads from
-      downloadDomain: 'localhost:5029',
+      downloadDomain: 'chronicler-rec.andres-invents.cloud',
       // The homepage of the bot
-      homepage: 'https://craig.chat/',
+      homepage: 'https://chronicler.andres-invents.cloud',
       // The dashboard URL
-      dashboardURL: 'https://my.craig.chat',
+      dashboardURL: 'https://chronicler.andres-invents.cloud',
       // Record disk size limit, in bytes
       sizeLimit: 536870912,
       // Record disk size limit for Opus web users, in bytes
@@ -98,41 +88,7 @@ module.exports = {
         connectUrl: 'http://localhost:5000?id={id}&key={key}'
       },
       rewardTiers: {
-        [-1]: {
-          // Greater Weasels
-          recordHours: 24,
-          downloadExpiryHours: 720,
-          features: ['mix', 'auto', 'drive', 'glowers', 'eccontinuous', 'ecflac', 'mp3']
-        },
         [0]: {
-          // Default
-          recordHours: 6,
-          downloadExpiryHours: 168,
-          features: []
-        },
-        [10]: {
-          // Supporters / I'm chipping in!
-          recordHours: 6,
-          downloadExpiryHours: 336,
-          features: ['drive', 'glowers'],
-          sizeLimitMult: 2
-        },
-        [20]: {
-          // Supporterers / More power!
-          recordHours: 24,
-          downloadExpiryHours: 720,
-          features: ['mix', 'auto', 'drive', 'glowers', 'eccontinuous'],
-          sizeLimitMult: 2
-        },
-        [30]: {
-          // Supporterests / I DEMAND FLAC
-          recordHours: 24,
-          downloadExpiryHours: 720,
-          features: ['mix', 'auto', 'drive', 'glowers', 'eccontinuous', 'ecflac'],
-          sizeLimitMult: 2
-        },
-        [100]: {
-          // MP3 God
           recordHours: 24,
           downloadExpiryHours: 720,
           features: ['mix', 'auto', 'drive', 'glowers', 'eccontinuous', 'ecflac', 'mp3'],
@@ -140,17 +96,14 @@ module.exports = {
         }
       }
     },
-
     status: {
       type: 4, // [custom status]
       name: 'craig',
       state: 'Recording VCs • craig.chat'
     },
-
     logger: {
       level: 'debug'
     },
-
     slash: {
       creator: {
         allowedMentions: {

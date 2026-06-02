@@ -62,7 +62,7 @@ module.exports = {
       // The protocol to get downloads from
       downloadProtocol: 'https',
       // The domain to get downloads from
-      downloadDomain: 'chronicler-rec.andres-invents.cloud',
+      downloadDomain: 'localhost:5029',
       // The homepage of the bot
       homepage: 'https://chronicler.andres-invents.cloud',
       // The dashboard URL

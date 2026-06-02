@@ -457,7 +457,7 @@ export default class App extends Component<any, AppState> {
               <div class="flex flex-row items-center justify-center gap-4">
                 <img src="/craig.png" class="w-16 h-16 rounded-full" />
                 <div class="flex flex-col">
-                  <h1 class="sm:text-4xl text-2xl text-zinc-100 font-display">{t('craig_rec')}</h1>
+                  <h1 class="sm:text-4xl text-2xl text-zinc-100 font-display">Chronicler Recording</h1>
                 </div>
               </div>
 

@@ -26,7 +26,7 @@ services:
         condition: service_started
     volumes:
       - 'craig_rec:/app/rec'
-      - './install.config:/app/install.config:ro'
+      - '../files/install.config:/app/install.config:ro'
 volumes:
   db_data:
   craig_rec:

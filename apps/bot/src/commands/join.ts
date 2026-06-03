@@ -34,7 +34,7 @@ export default class Join extends GeneralCommand {
         {
           type: CommandOptionType.STRING,
           name: 'chapter_duration',
-          description: 'Auto-split the recording into chapters of this length (e.g. 30m, 1h, 1h30m). Omit for one continuous file.'
+          description: 'Auto-split into chapters of this length (e.g. 30m, 1h, 1h30m). Omit for one file.'
         }
       ]
     });

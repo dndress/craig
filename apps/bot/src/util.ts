@@ -45,6 +45,45 @@ export function wait(ms: number) {
   });
 }
 
+/**
+ * Parse a duration string like "30m", "1h", "1h30m", "90m", "2h" into milliseconds.
+ * Returns null if the input is invalid.
+ * Accepted units: h (hours), m (minutes), s (seconds).
+ */
+export function parseDuration(input: string): number | null {
+  if (!input) return null;
+  const cleaned = input.toLowerCase().trim().replace(/\s+/g, '');
+  if (!cleaned) return null;
+  // Allow either a bare number (treated as minutes) or h/m/s suffix combinations.
+  if (/^\d+$/.test(cleaned)) {
+    const minutes = parseInt(cleaned, 10);
+    if (!isFinite(minutes) || minutes <= 0) return null;
+    return minutes * 60 * 1000;
+  }
+  const re = /(\d+)([hms])/g;
+  let match: RegExpExecArray | null;
+  let totalMs = 0;
+  let consumed = 0;
+  while ((match = re.exec(cleaned)) !== null) {
+    const value = parseInt(match[1], 10);
+    if (!isFinite(value) || value < 0) return null;
+    consumed += match[0].length;
+    switch (match[2]) {
+      case 'h':
+        totalMs += value * 60 * 60 * 1000;
+        break;
+      case 'm':
+        totalMs += value * 60 * 1000;
+        break;
+      case 's':
+        totalMs += value * 1000;
+        break;
+    }
+  }
+  if (consumed !== cleaned.length || totalMs <= 0) return null;
+  return totalMs;
+}
+
 export function makeError(obj: any) {
   const err = new Error(obj.message);
   err.name = obj.name;

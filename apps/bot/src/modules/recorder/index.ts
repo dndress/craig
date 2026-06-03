@@ -139,6 +139,10 @@ export default class RecorderModule<T extends DexareClient<CraigBotConfig>> exte
   find(id: string) {
     for (const recording of this.recordings.values()) {
       if (recording.id === id) return recording;
+      // After a chapter rotation the recording's primary id changes. Old panel
+      // buttons still carry the previous chapter's id, so we also match those
+      // so users don't see "recording not found" right after a rotation.
+      if (recording.previousIds.has(id)) return recording;
     }
   }
 

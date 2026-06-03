@@ -5,7 +5,18 @@ import Recording, { RecordingState } from '../modules/recorder/recording';
 import { checkMaintenance, processCooldown } from '../redis';
 import { reportRecordingError } from '../sentry';
 import GeneralCommand from '../slashCommand';
-import { checkBan, checkRecordingPermission, cutoffText, getSelfMember, makeDownloadMessage, parseRewards, stripIndentsAndLines } from '../util';
+import {
+  checkBan,
+  checkRecordingPermission,
+  cutoffText,
+  getSelfMember,
+  makeDownloadMessage,
+  parseDuration,
+  parseRewards,
+  stripIndentsAndLines
+} from '../util';
+
+const MAX_CHAPTERS_PER_SESSION = 50;
 
 export default class Join extends GeneralCommand {
   constructor(creator: SlashCreator) {
@@ -19,6 +30,11 @@ export default class Join extends GeneralCommand {
           name: 'channel',
           description: 'The channel to record in.',
           channel_types: [2, 13]
+        },
+        {
+          type: CommandOptionType.STRING,
+          name: 'chapter_duration',
+          description: 'Auto-split the recording into chapters of this length (e.g. 30m, 1h, 1h30m). Omit for one continuous file.'
         }
       ]
     });
@@ -331,8 +347,31 @@ export default class Join extends GeneralCommand {
         return `An error occurred while changing my nickname: ${e}`;
       }
 
+    // Parse optional chapter_duration. Returning early here keeps the user
+    // from going through all the rest of the start machinery on bad input.
+    let chapterDurationMs: number | null = null;
+    if (typeof ctx.options.chapter_duration === 'string' && ctx.options.chapter_duration.trim()) {
+      chapterDurationMs = parseDuration(ctx.options.chapter_duration);
+      if (chapterDurationMs === null)
+        return {
+          content:
+            "I couldn't parse that chapter duration. Try formats like `30m`, `1h`, `1h30m`, `90m`, or `2h`.",
+          ephemeral: true
+        };
+      const maxSessionMs = parsedRewards.rewards.recordHours * 60 * 60 * 1000;
+      if (chapterDurationMs >= maxSessionMs)
+        return {
+          content: `Chapter duration must be shorter than the maximum session length (${parsedRewards.rewards.recordHours}h).`,
+          ephemeral: true
+        };
+    }
+
     // Start recording
     const recording = new Recording(this.recorder, channel as any, member.user);
+    if (chapterDurationMs !== null) {
+      recording.chapterDurationMs = chapterDurationMs;
+      recording.maxChapters = MAX_CHAPTERS_PER_SESSION;
+    }
     this.recorder.recordings.set(ctx.guildID, recording);
     const { messageID, err } = await ctx
       .editOriginal(recording.messageContent() as any)

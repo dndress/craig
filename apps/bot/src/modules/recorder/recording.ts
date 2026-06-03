@@ -15,7 +15,7 @@ import { ButtonStyle, ComponentType, EditMessageOptions, MessageFlags, Separator
 import type { CraigBot, CraigBotConfig } from '../../bot';
 import { onRecordingEnd, onRecordingStart } from '../../influx';
 import { prisma } from '../../prisma';
-import { getSelfMember, ParsedRewards, wait } from '../../util';
+import { getSelfMember, makeDownloadMessage, ParsedRewards, wait } from '../../util';
 import type SlashModule from '../slash';
 import type RecorderModule from '.';
 import { UserExtraType, WebappOpCloseReason } from './protocol';
@@ -119,6 +119,20 @@ export default class Recording {
   hardLimitHit = false;
   writer: RecordingWriter | null = null;
 
+  // Chapter rotation state. When chapterDurationMs is null the recording
+  // behaves identically to upstream — one continuous file, no rotation.
+  // sessionId stays constant across all chapters of one /join invocation;
+  // it equals the very first chapter's id.
+  sessionId: string | null = null;
+  chapterNumber = 1;
+  chapterDurationMs: number | null = null;
+  chapterStartTime: [number, number] | null = null;
+  chapterStartedAt: Date | null = null;
+  chapterTimeout: any;
+  previousIds: Set<string> = new Set();
+  rotating = false;
+  maxChapters = 0; // 0 = unlimited
+
   timeout: any;
   usageInterval: any;
   sizeLimit = 0;
@@ -199,6 +213,12 @@ export default class Recording {
 
     this.startTime = process.hrtime();
     this.startedAt = new Date();
+    // For the first chapter, chapter timing equals session timing.
+    this.chapterStartTime = this.startTime;
+    this.chapterStartedAt = this.startedAt;
+    // Once the first chapter id is set, it becomes the immutable session id
+    // that all later chapters share.
+    this.sessionId = this.id;
 
     const fileBase = path.join(this.recorder.recordingPath, `${this.id}.ogg`);
     const { tier, rewards } = parsedRewards;
@@ -234,7 +254,16 @@ export default class Recording {
         clientId: this.recorder.client.bot.user.id,
         startTime: this.startedAt.toISOString(),
         expiresAfter: rewards.downloadExpiryHours,
-        features: rewards.features.reduce((acc, cur) => ({ ...acc, [cur]: true }), {} as { [key: string]: boolean })
+        features: rewards.features.reduce((acc, cur) => ({ ...acc, [cur]: true }), {} as { [key: string]: boolean }),
+        chapter:
+          this.chapterDurationMs !== null
+            ? {
+                sessionId: this.sessionId,
+                number: this.chapterNumber,
+                previousChapter: null,
+                chapterDurationMs: this.chapterDurationMs
+              }
+            : undefined
       }),
       { encoding: 'utf8' }
     );
@@ -248,6 +277,9 @@ export default class Recording {
       this.sendWarning(`You've reached the maximum time limit of ${rewards.recordHours} hours for this recording.`, false);
       await this.stop();
     }, rewards.recordHours * 60 * 60 * 1000);
+
+    // Schedule the first chapter rotation if requested.
+    this.scheduleChapterTimer();
 
     this.usageInterval = setInterval(async () => {
       if (this.state !== RecordingState.RECORDING) return;
@@ -292,7 +324,10 @@ export default class Recording {
         rewardTier: tier,
         autorecorded: this.autorecorded,
         expiresAt: new Date(this.startedAt.valueOf() + rewards.downloadExpiryHours * 60 * 60 * 1000),
-        createdAt: this.startedAt
+        createdAt: this.startedAt,
+        sessionId: this.chapterDurationMs !== null ? this.sessionId : null,
+        chapterNumber: this.chapterDurationMs !== null ? this.chapterNumber : null,
+        previousChapterId: null
       }
     });
 
@@ -301,9 +336,270 @@ export default class Recording {
     onRecordingStart(this.user.id, this.channel.guild.id, this.autorecorded);
   }
 
+  /** Schedules the next chapter rotation if chapter mode is on. No-op otherwise. */
+  private scheduleChapterTimer() {
+    if (this.chapterDurationMs === null) return;
+    clearTimeout(this.chapterTimeout);
+    this.chapterTimeout = setTimeout(() => {
+      this.rotate().catch((e) => this.recorder.logger.error(`Chapter rotation failed for recording ${this.id}`, e));
+    }, this.chapterDurationMs);
+  }
+
+  /**
+   * Rotates the current chapter: closes the current writer cleanly, opens a new
+   * one with new IDs, and resumes recording without dropping the voice connection.
+   *
+   * Safety invariants enforced here:
+   *  - Re-entrant rotations are blocked (this.rotating guard).
+   *  - The voice connection is never disturbed; only the writer is swapped.
+   *  - User packet buffers are flushed into the OLD writer twice — once before
+   *    the awaits in phase 2/3, and again right before the atomic swap in
+   *    phase 4 — so packets that arrived during the awaits land in the old
+   *    chapter file, not the new one.
+   *  - The swap of writer + users + userPackets + ids happens in one
+   *    contiguous synchronous block (no awaits) so onData callbacks see a
+   *    consistent state.
+   *  - Track numbers reset per chapter so each chapter file is self-contained.
+   *  - User headers for everyone currently known are queued to the new writer
+   *    BEFORE the swap, guaranteeing they precede any audio packets.
+   *  - The granule clock (chapterStartTime) is reset so the new chapter file
+   *    plays back from t=0 instead of inheriting the session-wide offset.
+   */
+  async rotate() {
+    if (this.state !== RecordingState.RECORDING) return;
+    if (this.rotating) return;
+    if (!this.writer || !this.startedAt || !this.rewards) return;
+    if (this.chapterDurationMs === null) return;
+    if (this.maxChapters > 0 && this.chapterNumber >= this.maxChapters) {
+      this.writeToLog(`Chapter cap (${this.maxChapters}) reached, skipping rotation`, 'chapter');
+      this.sendWarning(`Reached the chapter limit (${this.maxChapters}). Stopping the recording.`, false);
+      await this.stop();
+      return;
+    }
+    // Skip rotation when no audio has been received yet — otherwise we'd be
+    // creating a chapter with zero content, and the silence-detection
+    // interval would have stopped this recording shortly anyway.
+    if (this.usedMinutes === 0) {
+      this.writeToLog(`No audio yet, deferring rotation`, 'chapter');
+      this.scheduleChapterTimer();
+      return;
+    }
+
+    this.rotating = true;
+    try {
+      const oldId = this.id;
+      const oldChapterNumber = this.chapterNumber;
+      const oldRewards = this.rewards;
+      const driveUserId = this.user.id;
+
+      this.writeToLog(`Starting rotation from chapter ${oldChapterNumber} (id ${oldId})`, 'chapter');
+
+      // ── Phase 1: drain pending packet buffers into the current writer ──
+      for (const userId in this.userPackets) {
+        const user = this.users[userId];
+        if (user && this.userPackets[userId].length > 0) this.flush(user, this.userPackets[userId].length);
+      }
+
+      // ── Phase 2: mark the old chapter ended in the DB ──
+      await prisma.recording
+        .update({
+          where: { id: oldId },
+          data: { endedAt: new Date() }
+        })
+        .catch((e) => this.recorder.logger.error(`Failed to mark chapter ${oldChapterNumber} ended (${oldId})`, e));
+
+      // ── Phase 3: build the new chapter (no state on `this` yet) ──
+      const newId = recNanoid();
+      const newAccessKey = nanoid(6);
+      const newDeleteKey = nanoid(6);
+      const newEnnuiKey = nanoid(6);
+      const newChapterNumber = oldChapterNumber + 1;
+      const newStartedAt = new Date();
+      const newFileBase = path.join(this.recorder.recordingPath, `${newId}.ogg`);
+      await writeFile(
+        newFileBase + '.info',
+        JSON.stringify({
+          format: 1,
+          key: newAccessKey,
+          delete: newDeleteKey,
+          guild: this.channel.guild.name,
+          autorecorded: this.autorecorded,
+          guildExtra: {
+            name: this.channel.guild.name,
+            id: this.channel.guild.id,
+            icon: this.channel.guild.dynamicIconURL('png', 256)
+          },
+          channel: this.channel.name,
+          channelExtra: {
+            name: this.channel.name,
+            id: this.channel.id,
+            type: this.channel.type
+          },
+          requester:
+            this.user.discriminator === '0' ? this.user.username : this.user.username + '#' + this.user.discriminator,
+          requesterExtra: {
+            username: this.user.username,
+            globalName: this.user.globalName,
+            discriminator: this.user.discriminator,
+            avatar: this.user.dynamicAvatarURL('png', 256)
+          },
+          requesterId: this.user.id,
+          clientId: this.recorder.client.bot.user.id,
+          startTime: newStartedAt.toISOString(),
+          expiresAfter: oldRewards.rewards.downloadExpiryHours,
+          features: oldRewards.rewards.features.reduce(
+            (acc, cur) => ({ ...acc, [cur]: true }),
+            {} as { [key: string]: boolean }
+          ),
+          chapter: {
+            sessionId: this.sessionId,
+            number: newChapterNumber,
+            previousChapter: oldId,
+            chapterDurationMs: this.chapterDurationMs
+          }
+        }),
+        { encoding: 'utf8' }
+      );
+
+      const newWriter = new RecordingWriter(this, newFileBase);
+
+      // Build the new user map locally — don't touch this.users yet so onData
+      // calls landing during the awaits below still write to the old chapter.
+      let nextTrackNo = 1;
+      const newUsers: { [key: string]: RecordingUser } = {};
+      const newUserPackets: { [key: string]: Chunk[] } = {};
+      for (const userId in this.users) {
+        const u = this.users[userId];
+        newUsers[userId] = {
+          id: u.id,
+          username: u.username,
+          discriminator: u.discriminator,
+          globalName: u.globalName,
+          bot: u.bot,
+          avatar: u.avatar,
+          avatarUrl: u.avatarUrl,
+          unknown: u.unknown,
+          track: nextTrackNo++,
+          packet: 2
+        };
+        newUserPackets[userId] = [];
+      }
+      // Queue user headers + user records into the new writer's fastq. fastq
+      // preserves insertion order, so these are guaranteed to be written
+      // before any audio chunks that we enqueue after the swap.
+      for (const userId in newUsers) {
+        newWriter.writeUserHeader(newUsers[userId]);
+        newWriter.writeUser(newUsers[userId]);
+      }
+
+      // ── Phase 4: ATOMIC SWAP — no awaits in this block ──
+      // Flush again to catch any packets that arrived during phase 2/3 awaits.
+      for (const userId in this.userPackets) {
+        const u = this.users[userId];
+        if (u && this.userPackets[userId].length > 0) this.flush(u, this.userPackets[userId].length);
+      }
+      const oldWriter = this.writer;
+      this.previousIds.add(oldId);
+      this.id = newId;
+      this.accessKey = newAccessKey;
+      this.deleteKey = newDeleteKey;
+      this.ennuiKey = newEnnuiKey;
+      this.chapterNumber = newChapterNumber;
+      this.writer = newWriter;
+      this.users = newUsers;
+      this.userPackets = newUserPackets;
+      this.trackNo = nextTrackNo;
+      this.bytesWritten = 0;
+      this.hardLimitHit = false;
+      this.lastSize = 0;
+      this.chapterStartTime = process.hrtime();
+      this.chapterStartedAt = newStartedAt;
+      this.notePacketNo = 0;
+      // ── End of atomic swap ──
+
+      // ── Phase 5: insert the new chapter's DB row ──
+      await prisma.recording
+        .create({
+          data: {
+            id: newId,
+            accessKey: newAccessKey,
+            deleteKey: newDeleteKey,
+            userId: this.user.id,
+            channelId: this.channel.id,
+            guildId: this.channel.guild.id,
+            clientId: this.recorder.client.bot.user.id,
+            shardId: (this.recorder.client as unknown as CraigBot).shard!.id ?? -1,
+            rewardTier: oldRewards.tier,
+            autorecorded: this.autorecorded,
+            expiresAt: new Date(newStartedAt.valueOf() + oldRewards.rewards.downloadExpiryHours * 60 * 60 * 1000),
+            createdAt: newStartedAt,
+            sessionId: this.sessionId,
+            chapterNumber: newChapterNumber,
+            previousChapterId: oldId
+          }
+        })
+        .catch((e) => this.recorder.logger.error(`Failed to create DB row for chapter ${newChapterNumber} (${newId})`, e));
+
+      // ── Phase 6: close the old writer + kick off Drive upload in background ──
+      // We deliberately don't await this — the new chapter is already live.
+      void (async () => {
+        try {
+          await oldWriter.end();
+        } catch (e) {
+          this.recorder.logger.error(`Failed to close writer for chapter ${oldChapterNumber} (${oldId})`, e);
+        }
+        // Trigger Drive upload of the just-closed chapter only if the user
+        // opted in. Failure here doesn't affect the current chapter.
+        try {
+          const userPrefs = await prisma.user.findUnique({ where: { id: driveUserId } });
+          if (userPrefs?.driveEnabled) {
+            await this.recorder.uploader.upload(oldId, driveUserId, userPrefs.driveService);
+          }
+        } catch (e) {
+          this.recorder.logger.error(`Failed to queue Drive upload for chapter ${oldChapterNumber} (${oldId})`, e);
+        }
+      })();
+
+      // ── Phase 7: timer reset + user-visible feedback ──
+      this.scheduleChapterTimer();
+      this.pushToActivity(
+        `Chapter ${oldChapterNumber} saved as \`${oldId}\`. Chapter ${newChapterNumber} now recording.`
+      );
+      await this.updateMessage();
+      await this.sendChapterDM().catch((e) =>
+        this.recorder.logger.error(`Failed to send chapter DM for chapter ${newChapterNumber} (${newId})`, e)
+      );
+      await this.playNowRecording();
+
+      this.writeToLog(`Rotation complete: now on chapter ${newChapterNumber} (id ${newId})`, 'chapter');
+    } catch (e) {
+      this.recorder.logger.error(`Chapter rotation failed for session ${this.sessionId}`, e);
+      this.writeToLog(`Chapter rotation failed: ${e}`, 'chapter');
+      // Reschedule so a transient error doesn't permanently halt rotation.
+      this.scheduleChapterTimer();
+    } finally {
+      this.rotating = false;
+    }
+  }
+
+  /**
+   * Sends a DM to the requester with the download link for the CURRENT
+   * chapter (i.e. whatever this.id points to at call time). Called both by
+   * join.ts after start() and by rotate() right after the atomic swap, when
+   * this.id already references the new chapter.
+   */
+  async sendChapterDM() {
+    if (!this.rewards) return;
+    const dmChannel = await this.user.getDMChannel().catch(() => null);
+    if (!dmChannel) return;
+    const message = makeDownloadMessage(this, this.rewards, this.recorder.client.config, this.emojis);
+    await dmChannel.createMessage(message).catch(() => null);
+  }
+
   async stop(internal = false, userID?: string) {
     try {
       clearTimeout(this.timeout);
+      clearTimeout(this.chapterTimeout);
       clearInterval(this.usageInterval);
       this.active = false;
       this.recorder.logger.info(
@@ -745,7 +1041,10 @@ export default class Recording {
       }
     }
 
-    const chunkTime = process.hrtime(this.startTime!);
+    // Granule positions are relative to the CURRENT chapter, not the session.
+    // After a rotation, chapterStartTime is reset so the new chapter file
+    // starts playback at t=0 instead of inheriting the session offset.
+    const chunkTime = process.hrtime(this.chapterStartTime ?? this.startTime!);
     const time = chunkTime[0] * 48000 + ~~(chunkTime[1] / 20833.333);
     const recordingUser = await this.getOrCreateRecordingUser(userID);
     if (!recordingUser) return;
@@ -770,7 +1069,8 @@ export default class Recording {
       this.writer?.writeNoteHeader();
       this.notePacketNo++;
     }
-    const chunkTime = process.hrtime(this.startTime!);
+    // Notes are anchored to the current chapter's timeline, same as audio.
+    const chunkTime = process.hrtime(this.chapterStartTime ?? this.startTime!);
     const chunkGranule = chunkTime[0] * 48000 + ~~(chunkTime[1] / 20833.333);
     this.writer?.writeNote(chunkGranule, this.notePacketNo++, Buffer.from('NOTE' + note));
   }
@@ -868,6 +1168,9 @@ export default class Recording {
             {
               type: ComponentType.TEXT_DISPLAY,
               content: [
+                this.chapterDurationMs !== null
+                  ? `**Chapter ${this.chapterNumber}** (rotating every ${dayjs.duration(this.chapterDurationMs).format('H[h]m[m]').replace(/^0h/, '').replace(/0m$/, '').replace(/^0m$/, '0m')})`
+                  : '',
                 `**Recording ID:** \`${this.id}\``,
                 `**Channel:** ${this.channel.mention}`,
                 startedTimestamp ? `**Started:** <t:${startedTimestamp}:T> (<t:${startedTimestamp}:R>)` : '',

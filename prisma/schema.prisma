@@ -47,22 +47,26 @@ model Guild {
 }
 
 model Recording {
-  id           String    @id
-  accessKey    String
-  deleteKey    String
-  userId       String
-  channelId    String
-  guildId      String
-  clientId     String
-  shardId      Int
-  autorecorded Boolean   @default(false)
-  rewardTier   Int       @default(0)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
-  endedAt      DateTime? @db.Timestamptz(6)
-  errored      Boolean   @default(false)
-  expiresAt    DateTime  @db.Timestamptz(6)
+  id                 String    @id
+  accessKey          String
+  deleteKey          String
+  userId             String
+  channelId          String
+  guildId            String
+  clientId           String
+  shardId            Int
+  autorecorded       Boolean   @default(false)
+  rewardTier         Int       @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  endedAt            DateTime? @db.Timestamptz(6)
+  errored            Boolean   @default(false)
+  expiresAt          DateTime  @db.Timestamptz(6)
+  sessionId          String?
+  chapterNumber      Int?
+  previousChapterId  String?
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([sessionId])
 }
 
 model AutoRecord {

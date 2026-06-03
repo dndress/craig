@@ -376,11 +376,12 @@ export default class Recording {
       await this.stop();
       return;
     }
-    // Skip rotation when no audio has been received yet — otherwise we'd be
-    // creating a chapter with zero content, and the silence-detection
-    // interval would have stopped this recording shortly anyway.
-    if (this.usedMinutes === 0) {
-      this.writeToLog(`No audio yet, deferring rotation`, 'chapter');
+    // Skip rotation when no audio at all has been received this chapter —
+    // otherwise we'd be creating a chapter with zero content. bytesWritten
+    // updates the instant any packet arrives, so this is accurate sub-second
+    // (unlike usedMinutes, which only ticks once per minute).
+    if (this.bytesWritten === 0) {
+      this.writeToLog(`No audio this chapter yet, deferring rotation`, 'chapter');
       this.scheduleChapterTimer();
       return;
     }

@@ -48,60 +48,18 @@ const tierNames: { [key: number]: string } = {
 };
 
 const formats: DropdownItem[] = [
-  {
-    title: 'Audacity Project',
-    value: 'flac-aupzip'
-  },
-  {
-    title: 'FLAC',
-    value: 'flac-zip'
-  },
-  {
-    title: 'AAC',
-    value: 'aac-zip'
-  },
-  {
-    title: 'FLAC Single-Track Mix',
-    suffix: '($4 Tier)',
-    value: 'flac-mix',
-    tierRequired: 20
-  },
-  {
-    title: 'AAC Single-Track Mix',
-    suffix: '($4 Tier)',
-    value: 'aac-mix',
-    tierRequired: 20
-  },
-  {
-    title: 'Ogg Vorbis Single-Track Mix',
-    suffix: '($4 Tier)',
-    value: 'vorbis-mix',
-    tierRequired: 20
-  },
-  {
-    title: 'Ogg FLAC',
-    value: 'oggflac-zip'
-  },
-  {
-    title: 'HE-AAC',
-    value: 'heaac-zip'
-  },
-  {
-    title: 'Opus',
-    value: 'opus-zip'
-  },
-  {
-    title: 'Ogg Vorbis',
-    value: 'vorbis-zip'
-  },
-  {
-    title: 'ADPCM wav',
-    value: 'adpcm-zip'
-  },
-  {
-    title: '8-bit wav',
-    value: 'wav8-zip'
-  }
+  { title: 'Audacity Project', value: 'flac-aupzip' },
+  { title: 'FLAC', value: 'flac-zip' },
+  { title: 'AAC', value: 'aac-zip' },
+  { title: 'FLAC Single-Track Mix', value: 'flac-mix' },
+  { title: 'AAC Single-Track Mix', value: 'aac-mix' },
+  { title: 'Ogg Vorbis Single-Track Mix', value: 'vorbis-mix' },
+  { title: 'Ogg FLAC', value: 'oggflac-zip' },
+  { title: 'HE-AAC', value: 'heaac-zip' },
+  { title: 'Opus', value: 'opus-zip' },
+  { title: 'Ogg Vorbis', value: 'vorbis-zip' },
+  { title: 'ADPCM wav', value: 'adpcm-zip' },
+  { title: '8-bit wav', value: 'wav8-zip' }
 ];
 
 const serviceNames: { [key: string]: string } = {

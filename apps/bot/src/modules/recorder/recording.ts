@@ -18,6 +18,7 @@ import { prisma } from '../../prisma';
 import { getSelfMember, makeDownloadMessage, ParsedRewards, wait } from '../../util';
 import type SlashModule from '../slash';
 import type RecorderModule from '.';
+import { sendBarkeepWebhook } from './barkeep';
 import { UserExtraType, WebappOpCloseReason } from './protocol';
 import { WebappClient } from './webapp';
 import RecordingWriter from './writer';
@@ -392,6 +393,10 @@ export default class Recording {
       const oldChapterNumber = this.chapterNumber;
       const oldRewards = this.rewards;
       const driveUserId = this.user.id;
+      // Capture the chapter's start time before the atomic swap clobbers it.
+      // Used for the Barkeep webhook so each chapter reports its own start
+      // boundary instead of inheriting the session start time.
+      const oldChapterStartedAt = this.chapterStartedAt ?? this.startedAt;
 
       this.writeToLog(`Starting rotation from chapter ${oldChapterNumber} (id ${oldId})`, 'chapter');
 
@@ -541,7 +546,8 @@ export default class Recording {
         })
         .catch((e) => this.recorder.logger.error(`Failed to create DB row for chapter ${newChapterNumber} (${newId})`, e));
 
-      // ── Phase 6: close the old writer + kick off Drive upload in background ──
+      // ── Phase 6: close the old writer + kick off Drive upload + Barkeep
+      //               webhook in background ──
       // We deliberately don't await this — the new chapter is already live.
       void (async () => {
         try {
@@ -549,6 +555,31 @@ export default class Recording {
         } catch (e) {
           this.recorder.logger.error(`Failed to close writer for chapter ${oldChapterNumber} (${oldId})`, e);
         }
+        // Fire the Barkeep webhook for the just-closed chapter. Fire-and-
+        // forget; sendBarkeepWebhook is a no-op when the env vars are unset
+        // (i.e. when Barkeep isn't deployed). isFinalChapter is false here
+        // because the recording session is continuing.
+        sendBarkeepWebhook(
+          {
+            recordingId: this.sessionId ?? oldId,
+            chapterIndex: oldChapterNumber - 1,
+            isFinalChapter: false,
+            discordGuildId: this.channel.guild.id,
+            discordChannelId: this.channel.id,
+            startedAt: (oldChapterStartedAt ?? new Date()).toISOString(),
+            endedAt: new Date().toISOString(),
+            rawFiles: {
+              data: path.join(this.recorder.recordingPath, `${oldId}.ogg.data`),
+              header1: path.join(this.recorder.recordingPath, `${oldId}.ogg.header1`),
+              header2: path.join(this.recorder.recordingPath, `${oldId}.ogg.header2`),
+              users: path.join(this.recorder.recordingPath, `${oldId}.ogg.users`),
+              info: path.join(this.recorder.recordingPath, `${oldId}.ogg.info`)
+            }
+          },
+          this.recorder.logger
+        ).catch(() => {
+          /* sendBarkeepWebhook already logs internally */
+        });
         // Trigger Drive upload of the just-closed chapter only if the user
         // opted in. Goes through uploadRecordingToDrive so the configured
         // driveFormats list applies to chapters too. Failure here doesn't
@@ -626,6 +657,38 @@ export default class Recording {
       this.webapp?.close(WebappOpCloseReason.RECORDING_ENDED);
       await wait(200);
       await this.writer?.end();
+
+      // Fire the final Barkeep webhook for this session's last chapter.
+      // Gated on `started` so we don't post about recordings that errored
+      // out before any audio was captured. isFinalChapter is always true
+      // here — this is the only path that sets it. Fire-and-forget; the
+      // helper is a no-op when env vars aren't set.
+      if (this.started && this.startedAt) {
+        const finalChapterId = this.id;
+        const finalChapterIndex = this.chapterNumber - 1;
+        const finalChapterStartedAt = this.chapterStartedAt ?? this.startedAt;
+        sendBarkeepWebhook(
+          {
+            recordingId: this.sessionId ?? finalChapterId,
+            chapterIndex: finalChapterIndex,
+            isFinalChapter: true,
+            discordGuildId: this.channel.guild.id,
+            discordChannelId: this.channel.id,
+            startedAt: finalChapterStartedAt.toISOString(),
+            endedAt: new Date().toISOString(),
+            rawFiles: {
+              data: path.join(this.recorder.recordingPath, `${finalChapterId}.ogg.data`),
+              header1: path.join(this.recorder.recordingPath, `${finalChapterId}.ogg.header1`),
+              header2: path.join(this.recorder.recordingPath, `${finalChapterId}.ogg.header2`),
+              users: path.join(this.recorder.recordingPath, `${finalChapterId}.ogg.users`),
+              info: path.join(this.recorder.recordingPath, `${finalChapterId}.ogg.info`)
+            }
+          },
+          this.recorder.logger
+        ).catch(() => {
+          /* sendBarkeepWebhook already logs internally */
+        });
+      }
 
       this.recorder.recordings.delete(this.channel.guild.id);
 

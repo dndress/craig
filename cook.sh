@@ -215,12 +215,20 @@ then
     ) > "$tmpdir/out/$ID.aup"
 fi
 
+# Chronicler: read chapter+timestamp tag once. Empty string when .info is
+# missing or malformed; in that case per-track names degrade gracefully to
+# <track>_<user>.<ext>.
+META="`$SCRIPTBASE/cook/chapinfo.js $ID`"
+[ "$META" ] || unset META
+
 # Make our fifos and surrounding content
 for c in `seq -w 1 $NB_STREAMS`
 do
     O_USER="`$SCRIPTBASE/cook/userinfo.js $ID $c`"
     [ "$O_USER" ] || unset O_USER
-    O_FN="$c${O_USER+-}$O_USER.$ext"
+    # All separators are underscore per request. Track number leads so files
+    # sort by speaker within the zip.
+    O_FN="$c${O_USER+_}$O_USER${META+_}$META.$ext"
     O_FFN="$OUTDIR/$O_FN"
     mkfifo "$O_FFN"
 
@@ -259,7 +267,9 @@ for c in `seq -w 1 $NB_STREAMS`
 do
     O_USER="`$SCRIPTBASE/cook/userinfo.js $ID $c`"
     [ "$O_USER" ] || unset O_USER
-    O_FN="$c${O_USER+-}$O_USER.$ext"
+    # Must match the filename pattern used in the fifo-creation loop above,
+    # otherwise the encoder writes to a path that doesn't exist as a fifo.
+    O_FN="$c${O_USER+_}$O_USER${META+_}$META.$ext"
     O_FFN="$OUTDIR/$O_FN"
     T_DURATION=`timeout $DEF_TIMEOUT $NICE "$SCRIPTBASE/cook/oggduration" $c < $ID.ogg.data`
     sno=`echo "$STREAM_NOS" | sed -n "$c"p`

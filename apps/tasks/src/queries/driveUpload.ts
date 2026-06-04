@@ -161,10 +161,14 @@ const FormatToExt: Record<string, string> = {
 
 export async function driveUpload({
   recordingId,
-  userId
+  userId,
+  format: formatOverride,
+  container: containerOverride
 }: {
   recordingId: string;
   userId: string;
+  format?: string;
+  container?: string;
 }): Promise<{ error: null | string; notify: boolean; id?: string; url?: string }> {
   const infoExists = await fileExists(path.join(recPath, `${recordingId}.ogg.info`));
   if (!infoExists) return { error: 'info_deleted', notify: false };
@@ -172,19 +176,26 @@ export async function driveUpload({
   if (!dataExists) return { error: 'data_deleted', notify: false };
   const info = JSON.parse(await fs.readFile(path.join(recPath, `${recordingId}.ogg.info`), 'utf8'));
   const startDate = new Date(info.startTime);
-  const fileName = `chronicler_${recordingId}_${startDate.getFullYear()}-${
-    startDate.getMonth() + 1
-  }-${startDate.getDate()}_${startDate.getHours()}-${startDate.getMinutes()}-${startDate.getSeconds()}`;
+  // Filename: chronicler_chN_YYYYMMDD_HHMM_<id>. Chapter segment is included
+  // only when the recording is part of a chaptered session. UTC isn't used
+  // — the original .info startTime is the bot's local server time which
+  // already aligns with what users saw in chat.
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const ts = `${startDate.getFullYear()}${pad(startDate.getMonth() + 1)}${pad(startDate.getDate())}_${pad(startDate.getHours())}${pad(startDate.getMinutes())}`;
+  const chapterTag = info.chapter && typeof info.chapter.number === 'number' ? `ch${info.chapter.number}_` : '';
+  const fileName = `chronicler_${chapterTag}${ts}_${recordingId}`;
 
   const user = await prisma.user.findFirst({ where: { id: userId } });
   if (!user) return { error: 'user_not_found', notify: false };
-  if (user.rewardTier === 0) return { error: 'user_not_allowed', notify: false };
+  // Self-host: no patron tier gating. Mix container & other format
+  // restrictions also removed since all features are unlocked.
   if (!user.driveEnabled) return { error: 'not_enabled', notify: false };
-  if (user.rewardTier !== -1 && user.rewardTier < 20 && user.driveContainer === 'mix')
-    return { error: 'mix_unavailable_with_current_tier', notify: false };
 
-  const format = user.driveFormat || 'flac';
-  const container = user.driveContainer || 'zip';
+  // Per-call overrides take precedence; otherwise fall back to the user's
+  // saved dashboard preference. This lets the bot loop and upload multiple
+  // formats per recording without mutating user state.
+  const format = formatOverride || user.driveFormat || 'flac';
+  const container = containerOverride || user.driveContainer || 'zip';
   logger.info(`Uploading ${recordingId} to ${userId} via ${user.driveService} (${format}.${container})`);
   const start = Date.now();
 

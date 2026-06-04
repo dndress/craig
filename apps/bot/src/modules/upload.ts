@@ -78,12 +78,15 @@ export default class UploadModule extends DexareModule<CraigBot> {
         .catch(() => {});
   }
 
-  async upload(recordingId: string, userId: string, driveService: string) {
-    if (!this.client.config.kitchenURL) return await this.uploadWithTrpc(recordingId, userId, driveService);
+  async upload(recordingId: string, userId: string, driveService: string, format?: string, container?: string) {
+    if (!this.client.config.kitchenURL)
+      return await this.uploadWithTrpc(recordingId, userId, driveService, format, container);
     const service = SERVICES[driveService] ?? driveService;
 
     try {
-      const response = await fetch(`${this.client.config.kitchenURL}/recordings/${recordingId}/upload/${userId}`, { method: 'POST' });
+      // Kitchen API: pass format/container via query string if specified.
+      const qs = format || container ? `?${new URLSearchParams({ ...(format ? { format } : {}), ...(container ? { container } : {}) })}` : '';
+      const response = await fetch(`${this.client.config.kitchenURL}/recordings/${recordingId}/upload/${userId}${qs}`, { method: 'POST' });
       // 204's means this ran fine but theres no recording coming out of it
       if (response.status > 299) {
         const error = (await response.json().catch(() => null))?.error ?? 'server_error';
@@ -117,9 +120,16 @@ export default class UploadModule extends DexareModule<CraigBot> {
     }
   }
 
-  async uploadWithTrpc(recordingId: string, userId: string, driveService: string) {
+  async uploadWithTrpc(recordingId: string, userId: string, driveService: string, format?: string, container?: string) {
     const service = SERVICES[driveService] ?? driveService;
-    const response = await this.trpc.query('driveUpload', { recordingId, userId }).catch(() => null);
+    const response = await this.trpc
+      .query('driveUpload', {
+        recordingId,
+        userId,
+        ...(format ? { format } : {}),
+        ...(container ? { container } : {})
+      })
+      .catch(() => null);
 
     if (!response) {
       this.logger.error(`Failed to upload recording ${recordingId} to ${service}: Could not connect to the server`);

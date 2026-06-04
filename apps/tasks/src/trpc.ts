@@ -7,7 +7,11 @@ import { driveUpload } from './queries/driveUpload';
 export const appRouter = trpc.router().query('driveUpload', {
   input: z.object({
     recordingId: z.string(),
-    userId: z.string()
+    userId: z.string(),
+    // Optional per-call format override. When omitted the user's saved
+    // dashboard preference is used (upstream behavior).
+    format: z.string().optional(),
+    container: z.string().optional()
   }),
   resolve: async ({ input }) => {
     return await driveUpload(input);

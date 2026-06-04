@@ -79,6 +79,12 @@ module.exports = {
       alistair: false,
       // The folder to put recordings in
       recordingFolder: '../../rec',
+      // Self-host: list of format values (matching dashboard dropdown) to
+      // upload per recording. When set, the requester's saved dashboard
+      // format preference is ignored and the recording is uploaded once per
+      // entry in this list. Leave null/empty for upstream behavior (one
+      // upload using the user's saved format).
+      driveFormats: ['flac-zip', 'flac-mix', 'mp3', 'aac-zip'],
       // Webapp settings
       webapp: {
         on: true,

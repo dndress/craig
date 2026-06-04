@@ -31,10 +31,14 @@ type TRPCRouter = Router<
       {
         recordingId: string;
         userId: string;
+        format?: string;
+        container?: string;
       },
       {
         recordingId: string;
         userId: string;
+        format?: string;
+        container?: string;
       },
       {
         error: string | null;

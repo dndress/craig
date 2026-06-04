@@ -53,6 +53,11 @@ export interface CraigBotConfig extends BaseConfig {
     };
     rewardTiers: { [tier: string]: RewardTier };
     entitlementWebhookURLs?: { url: string; key: string }[];
+    // Self-host: list of format-container values (e.g. 'flac-zip', 'mp3-mix')
+    // to upload to Drive per recording. When set, the user's saved single
+    // format preference is ignored and the recording is uploaded once per
+    // entry. Leave null/undefined for upstream single-format behavior.
+    driveFormats?: string[] | null;
   };
 
   logger: {

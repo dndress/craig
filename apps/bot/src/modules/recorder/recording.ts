@@ -550,11 +550,13 @@ export default class Recording {
           this.recorder.logger.error(`Failed to close writer for chapter ${oldChapterNumber} (${oldId})`, e);
         }
         // Trigger Drive upload of the just-closed chapter only if the user
-        // opted in. Failure here doesn't affect the current chapter.
+        // opted in. Goes through uploadRecordingToDrive so the configured
+        // driveFormats list applies to chapters too. Failure here doesn't
+        // affect the current chapter.
         try {
           const userPrefs = await prisma.user.findUnique({ where: { id: driveUserId } });
           if (userPrefs?.driveEnabled) {
-            await this.recorder.uploader.upload(oldId, driveUserId, userPrefs.driveService);
+            await this.uploadRecordingToDrive(oldId, driveUserId, userPrefs.driveService);
           }
         } catch (e) {
           this.recorder.logger.error(`Failed to queue Drive upload for chapter ${oldChapterNumber} (${oldId})`, e);
@@ -685,7 +687,39 @@ export default class Recording {
     const user = await prisma.user.findUnique({ where: { id: this.user.id } });
     if (!user || !user.driveEnabled) return;
 
-    await this.recorder.uploader.upload(this.id, this.user.id, user.driveService);
+    await this.uploadRecordingToDrive(this.id, this.user.id, user.driveService);
+  }
+
+  /**
+   * Triggers Drive uploads for one recording id. When the bot's config has a
+   * driveFormats list, the recording is uploaded once per entry in that list
+   * (e.g. flac-zip + flac-mix + mp3 + aac-zip = 4 uploads). When the list is
+   * null/empty, a single upload runs using the user's saved dashboard
+   * format preference (upstream behavior).
+   *
+   * Each entry in driveFormats is "<format>-<container>"; entries with no
+   * dash are treated as bare format with no container override (rare).
+   */
+  async uploadRecordingToDrive(recordingId: string, userId: string, driveService: string) {
+    const formats = this.recorder.client.config.craig.driveFormats;
+    if (!Array.isArray(formats) || formats.length === 0) {
+      // Upstream behavior: one upload, user's saved preference.
+      await this.recorder.uploader.upload(recordingId, userId, driveService);
+      return;
+    }
+    // Multi-format. Upload sequentially to avoid hammering the kitchen/tasks
+    // service with parallel jobs for the same recording (each one cooks
+    // ffmpeg, which is CPU-hungry).
+    for (const entry of formats) {
+      const dashIdx = entry.indexOf('-');
+      const format = dashIdx === -1 ? entry : entry.slice(0, dashIdx);
+      const container = dashIdx === -1 ? undefined : entry.slice(dashIdx + 1);
+      try {
+        await this.recorder.uploader.upload(recordingId, userId, driveService, format, container);
+      } catch (e) {
+        this.recorder.logger.error(`Drive upload failed for ${recordingId} (${entry})`, e);
+      }
+    }
   }
 
   async connect() {

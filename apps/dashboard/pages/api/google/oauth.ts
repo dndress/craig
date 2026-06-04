@@ -20,9 +20,8 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'GET') return res.redirect('/');
   const user = parseUser(req);
   if (!user) return res.redirect('/');
-  const dbUser = await prisma.user.findFirst({ where: { id: user.id } });
-  if (!dbUser) return res.redirect('/');
-  if (dbUser.rewardTier === 0) return res.redirect('/');
+  // Self-host: no patron tier gating. The user row may not exist yet — the
+  // upserts below will create one as needed.
 
   const { code = null, error = null } = req.query;
   if (error) return res.redirect(`/?error=${req.query.error}&from=google`);

@@ -11,24 +11,27 @@ module.exports = {
   //   keyPrefix: 'craig:'
   // },
 
-  // For drive upload in Google Drive
+  // Cloud-upload credentials: read from process.env so install.config
+  // (which install.sh sources before starting PM2) flows into the tasks
+  // app the same way it does into the dashboard. Upstream Craig only ever
+  // wrote these into the dashboard's .env, so the tasks app saw empty
+  // strings and every Drive upload failed with a misleading
+  // "google_token_expired" surface error.
   drive: {
-    clientId: '',
-    clientSecret: ''
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || ''
   },
 
-  // For drive upload in Microsoft OneDrive
   microsoft: {
-    clientId: '',
-    clientSecret: '',
+    clientId: process.env.MICROSOFT_CLIENT_ID || '',
+    clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     redirect: ''
   },
 
-  // For drive upload in Dropbox
   dropbox: {
-    clientId: '',
-    clientSecret: '',
-    folderName: 'CraigChat'
+    clientId: process.env.DROPBOX_CLIENT_ID || '',
+    clientSecret: process.env.DROPBOX_CLIENT_SECRET || '',
+    folderName: 'Chronicler'
   },
 
   // for refresh patrons job

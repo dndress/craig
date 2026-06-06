@@ -454,7 +454,14 @@ config_cook(){
     exit 1 
   fi
 
+  # set -a auto-exports every variable assigned while it's on, so values
+  # sourced from install.config become real environment variables visible
+  # to all child processes (notably PM2 and the apps it spawns). Without
+  # this, only the install.sh shell saw them, and apps that read
+  # process.env (like the tasks app's Drive config) got empty strings.
+  set -a
   source "$craig_dir/install.config"
+  set +a
 
   # check if user is using linux
   OS="$(uname)"

@@ -98,7 +98,14 @@ async function findCraigDirectoryInGoogleDrive(drive: drive_v3.Drive) {
     });
 
     return folder.data.id;
-  } catch (e) {
+  } catch (e: any) {
+    // Surface the real Google API error instead of silently returning null
+    // (which the caller misreports as "google_token_expired"). Common
+    // culprits: insufficient OAuth scope, revoked permission, refresh token
+    // missing, API not enabled, quota exhaustion.
+    logger.error(
+      `findChroniclerDirectoryInGoogleDrive failed: ${e?.message ?? e} | code=${e?.code} | status=${e?.response?.status} | errors=${JSON.stringify(e?.errors ?? e?.response?.data?.error ?? null)}`
+    );
     return null;
   }
 }

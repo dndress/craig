@@ -96,8 +96,12 @@ export default class EntitlementsModule extends DexareModule<CraigBot> {
         rewardTier: maxTier
       },
       update: {
-        rewardTier: maxTier,
-        ...(maxTier === 0 ? { driveEnabled: false } : {})
+        rewardTier: maxTier
+        // Self-host: removed the `driveEnabled: false` reset that upstream
+        // applies whenever maxTier === 0. On self-host everyone is tier 0
+        // permanently, so this reset was firing every time the entitlements
+        // check ran (including on voice-channel join) and silently flipping
+        // the user's Drive upload preference off.
       }
     });
   }

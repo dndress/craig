@@ -163,8 +163,11 @@ export default class RefreshPatrons extends TaskJob {
     return prisma.user.update({
       where: { id: userId },
       data: {
-        rewardTier: maxTier,
-        ...(maxTier === 0 ? { driveEnabled: false } : {})
+        rewardTier: maxTier
+        // Self-host: same fix as in apps/bot/src/modules/entitlements.ts —
+        // do NOT auto-disable driveEnabled when maxTier === 0. Everyone on
+        // self-host is tier 0; this reset would silently turn off the
+        // user's upload preference on every patron-refresh cron tick.
       }
     });
   }

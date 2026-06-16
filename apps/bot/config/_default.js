@@ -84,7 +84,7 @@ module.exports = {
       // format preference is ignored and the recording is uploaded once per
       // entry in this list. Leave null/empty for upstream behavior (one
       // upload using the user's saved format).
-      driveFormats: ['flac-zip', 'mp3'],
+      driveFormats: ['flac-zip'],
       // Webapp settings
       webapp: {
         on: true,

@@ -13,6 +13,15 @@ services:
       retries: 5
     volumes:
       - 'db_data:/var/lib/postgresql/data'
+    networks:
+      default:
+        aliases:
+          # Stack-unique DNS name. The bare service name `db` collides with
+          # Supabase's `db` service on the shared external `dokploy-network`,
+          # so the bot was resolving `db` to Supabase's Postgres and failing
+          # auth. Always reference this Postgres as `chronicler-db` in
+          # DATABASE_URL. See CHRONICLER_NOTES.md ("db hostname collision").
+          - chronicler-db
   redis:
     image: redis
     restart: always
